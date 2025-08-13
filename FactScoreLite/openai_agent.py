@@ -2,6 +2,9 @@ from openai import OpenAI
 from openai import (
     RateLimitError,
 )
+import re
+from openai import AzureOpenAI
+from azure.identity import DefaultAzureCredential, ChainedTokenCredential, AzureCliCredential, ManagedIdentityCredential, get_bearer_token_provider
 import time
 import logging
 import random
@@ -63,10 +66,40 @@ def retry_with_exponential_backoff(
 class OpenAIAgent:
 
     def __init__(self):
-        self.client = OpenAI()
-        self.max_tokens = configs.max_tokens
-        self.temp = configs.temp
-        self.model_name = configs.model_name
+
+        if configs.model_name.startswith("trapi-"):
+            scope = "api://trapi/.default"
+            credential = get_bearer_token_provider(
+                ChainedTokenCredential(
+                    DefaultAzureCredential(),
+                    ManagedIdentityCredential(),
+                    AzureCliCredential(),
+                ),
+                scope,
+            )
+            if "gpt-4o" in configs.model_name.lower():    
+                _model_name = 'gpt-4o'  # Ensure this is a valid model name
+                model_version = '2024-11-20'  # Ensure this is a valid model version
+                instance = 'gcr/preview' # See https://aka.ms/trapi/models for the instance name, remove /openai (library adds it implicitly)     
+                api_version = '2024-10-21' # Ensure this is a valid API version
+            else:
+                raise ValueError(f"Unsupported model name: {configs.model_name}. Only 'trapi-gpt-4o' is supported.")
+
+            deployment_name = re.sub(r'[^a-zA-Z0-9-_]', '', f'{_model_name}_{model_version}')  # If your Endpoint doesn't have harmonized deployment names, you can use the deployment name directly: see: https://aka.ms/trapi/models
+            endpoint = f'https://trapi.research.microsoft.com/{instance}'
+
+            self.client = AzureOpenAI(
+                azure_endpoint=endpoint,
+                azure_ad_token_provider=credential,
+                api_version=api_version,
+            )
+            self.model_name = deployment_name  # Use the deployment name as the model name
+
+        else:
+            self.client = OpenAI()
+            self.max_tokens = configs.max_tokens
+            self.temp = configs.temp
+            self.model_name = configs.model_name
 
     @retry_with_exponential_backoff
     def generate(self, prompt):
