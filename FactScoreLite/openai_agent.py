@@ -94,6 +94,8 @@ class OpenAIAgent:
                 api_version=api_version,
             )
             self.model_name = deployment_name  # Use the deployment name as the model name
+            self.max_tokens = configs.max_tokens
+            self.temp = configs.temp
 
         else:
             self.client = OpenAI()

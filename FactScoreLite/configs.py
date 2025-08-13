@@ -10,7 +10,7 @@ fact_scorer_demons_path = data_path / "fact_scorer_demons.json"
 # OpenAI API
 max_tokens = 1024
 temp = 0.7
-model_name = "gpt-4-turbo-preview"
+model_name = "trapi-gpt-4o"
 
 # Database path
 facts_db_path = "facts.json"
