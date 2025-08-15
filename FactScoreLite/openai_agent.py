@@ -9,6 +9,35 @@ import time
 import logging
 import random
 from . import configs
+from tenacity import (
+    retry,
+    retry_if_exception,
+    retry_if_not_exception_type,
+    stop_after_attempt,
+    wait_random_exponential,
+)
+
+def retry_on_exception(
+    func, exception_filter_func, multiplier=1, max_wait=40, max_attempts=100
+):
+    """Executes a function with retry logic for certain exceptions. Never retries on KeyboardInterrupt.
+    Args:
+        func: The function to execute with retries
+        exception_filter_func: Function that checks if an exception needs to be retried
+        *args, **kwargs: Arguments to pass to the function
+
+    Returns:
+        The result of the function call
+    """
+    retry_function = retry(
+        retry=(
+            retry_if_not_exception_type(KeyboardInterrupt)
+            & retry_if_exception(exception_filter_func)
+        ),
+        wait=wait_random_exponential(multiplier=multiplier, max=max_wait),
+        stop=stop_after_attempt(max_attempts),
+    )
+    return retry_function(func)
 
 
 # define a retry decorator
@@ -103,15 +132,58 @@ class OpenAIAgent:
             self.temp = configs.temp
             self.model_name = configs.model_name
 
-    @retry_with_exponential_backoff
     def generate(self, prompt):
-        response = self.client.chat.completions.create(
-            model=self.model_name,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=self.max_tokens,
-            temperature=self.temp,
+
+        try:
+            response = retry_on_exception(
+                self.client.chat.completions.create, self.need_to_be_retried
+            )(
+                model=self.model_name,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=self.max_tokens,
+                temperature=self.temp,
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            logging.exception(f"Error occurred while generating response: {e}")
+            return "Failed to generate response."
+
+    def need_to_be_retried(self, exception) -> bool:
+        # List of fully qualified names of RateLimitError exceptions from various libraries
+        _errors = [
+            "openai.APIStatusError",
+            "openai.APITimeoutError",
+            "openai.error.Timeout",
+            "openai.error.RateLimitError",
+            "openai.error.ServiceUnavailableError",
+            "openai.Timeout",
+            "openai.APIError",
+            "openai.APIConnectionError",
+            "openai.RateLimitError",
+            "openai.PermissionDeniedError",
+            "openai.BadRequestError",
+            # Add more as needed
+        ]
+        exception_full_name = (
+            f"{exception.__class__.__module__}.{exception.__class__.__name__}"
         )
-        return response.choices[0].message.content
+
+        need_to_retry = exception_full_name in _errors
+
+        # Ignore error that are not rate limit errors
+        if exception_full_name == "openai.APIStatusError":
+            if not (
+                "'status': 429" in exception.message  # Rate Limit Exceeded
+                or "'status': 504" in exception.message  # Gateway Timeout
+                or (  # A previous prompt was too large
+                    "'status': 413" in exception.message
+                    and "A previous prompt was too large." in exception.message
+                )
+            ):
+                need_to_retry = False
+
+        return need_to_retry
+
 
 
 # Ensure proper logging configuration
