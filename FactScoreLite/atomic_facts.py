@@ -109,12 +109,15 @@ class AtomicFactGenerator:
             list: A list of cleaned sentences.
         """
         sentences = text.split("- ")[1:]
-        sentences = [
-            sent.strip()[:-1] if sent.strip()[-1] == "\n" else sent.strip()
-            for sent in sentences
-        ]
+        try:
+            sentences = [
+                sent.strip()[:-1] if sent.strip()[-1] == "\n" else sent.strip()
+                for sent in sentences
+            ]
+        except:
+            sentences = [sent.strip() for sent in sentences]
 
-        sentences = [sent + "." if sent[-1] != "." else sent for sent in sentences]
+        sentences = [sent + "." if (sent and sent[-1] != ".") else sent for sent in sentences]
 
         return sentences
 
