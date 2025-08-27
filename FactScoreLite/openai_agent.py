@@ -109,7 +109,7 @@ class OpenAIAgent:
             if "gpt-4o" in configs.model_name.lower():    
                 _model_name = 'gpt-4o'  # Ensure this is a valid model name
                 model_version = '2024-11-20'  # Ensure this is a valid model version
-                instance = 'gcr/preview' # See https://aka.ms/trapi/models for the instance name, remove /openai (library adds it implicitly)     
+                instance = 'msrne/shared' # Use the same instance as the working Azure configuration
                 api_version = '2024-10-21' # Ensure this is a valid API version
             else:
                 raise ValueError(f"Unsupported model name: {configs.model_name}. Only 'trapi-gpt-4o' is supported.")
