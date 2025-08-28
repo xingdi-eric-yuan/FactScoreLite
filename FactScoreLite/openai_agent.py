@@ -145,7 +145,6 @@ class OpenAIAgent:
     def generate(self, prompt):
 
         try:
-            print(f"FactScoreLite API Call - Using model: {self.model_name}")
             response = retry_on_exception(
                 self.client.chat.completions.create, self.need_to_be_retried
             )(
