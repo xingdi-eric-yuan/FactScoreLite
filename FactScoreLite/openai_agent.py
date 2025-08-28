@@ -1,6 +1,7 @@
 from openai import OpenAI
 from openai import (
     RateLimitError,
+    InternalServerError,
 )
 import re
 from openai import AzureOpenAI
@@ -15,6 +16,7 @@ from tenacity import (
     retry_if_not_exception_type,
     stop_after_attempt,
     wait_random_exponential,
+    wait_fixed,
 )
 
 def retry_on_exception(
@@ -95,7 +97,7 @@ def retry_with_exponential_backoff(
 class OpenAIAgent:
 
     def __init__(self):
-
+        print("=== OpenAIAgent.__init__ called ===")
         if configs.model_name.startswith("trapi-"):
             scope = "api://trapi/.default"
             credential = get_bearer_token_provider(
@@ -117,6 +119,14 @@ class OpenAIAgent:
             deployment_name = re.sub(r'[^a-zA-Z0-9-_]', '', f'{_model_name}_{model_version}')  # If your Endpoint doesn't have harmonized deployment names, you can use the deployment name directly: see: https://aka.ms/trapi/models
             endpoint = f'https://trapi.research.microsoft.com/{instance}'
 
+            print(f"FactScoreLite TRAPI Config:")
+            print(f"  Model: {_model_name}")
+            print(f"  Version: {model_version}")
+            print(f"  Instance: {instance}")
+            print(f"  Deployment: {deployment_name}")
+            print(f"  Endpoint: {endpoint}")
+            print(f"  API Version: {api_version}")
+
             self.client = AzureOpenAI(
                 azure_endpoint=endpoint,
                 azure_ad_token_provider=credential,
@@ -135,6 +145,7 @@ class OpenAIAgent:
     def generate(self, prompt):
 
         try:
+            print(f"FactScoreLite API Call - Using model: {self.model_name}")
             response = retry_on_exception(
                 self.client.chat.completions.create, self.need_to_be_retried
             )(
@@ -152,6 +163,7 @@ class OpenAIAgent:
         # List of fully qualified names of RateLimitError exceptions from various libraries
         _errors = [
             "openai.APIStatusError",
+            "openai.InternalServerError",  # Add 503 errors
             "openai.APITimeoutError",
             "openai.error.Timeout",
             "openai.error.RateLimitError",
@@ -181,6 +193,10 @@ class OpenAIAgent:
                 )
             ):
                 need_to_retry = False
+
+        # Always retry InternalServerError (503) but with longer wait
+        if exception_full_name == "openai.InternalServerError" and "'status': 503" in exception.message:
+            need_to_retry = True
 
         return need_to_retry
 
