@@ -61,10 +61,14 @@ class FactScorer:
             list: A list of dictionaries containing the atomic fact and its score.
         """
 
+        print(f"=== FactScorer: Scoring {len(facts)} atomic facts ===")
+        print(f"=== Knowledge source length: {len(knowledge_source)} characters ===")
+
         decisions = []
 
-        for atom in facts:
+        for i, atom in enumerate(facts, 1):
             atom = atom.strip()
+            print(f"=== Scoring fact {i}/{len(facts)}: {atom[:80]}{'...' if len(atom) > 80 else ''} ===")
 
             # Prompt that will be sent to GPT
             prompt = self.get_instructions()
@@ -102,8 +106,11 @@ class FactScorer:
                     ]
                 )
 
+            print(f"=== Fact {i} result: {'SUPPORTED' if is_supported else 'NOT SUPPORTED'} ===")
+
             decisions.append(
                 {"fact": atom, "is_supported": is_supported, "output": output}
             )
 
+        print(f"=== FactScorer: Completed scoring {len(facts)} facts ===")
         return decisions

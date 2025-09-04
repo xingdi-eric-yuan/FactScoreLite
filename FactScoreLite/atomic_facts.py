@@ -30,11 +30,18 @@ class AtomicFactGenerator:
         sentences = sent_tokenize(text)
         sentences = self.fix_sentence_splitter(sentences, initials)
 
+        print(f"=== AtomicFactGenerator: Processing {len(sentences)} sentences ===")
+        print(f"=== Text length: {len(text)} characters ===")
+
         atoms = []
-        for sent in sentences:
+        for i, sent in enumerate(sentences, 1):
+            print(f"=== Processing sentence {i}/{len(sentences)} ===")
+            print(f"=== Sentence: {sent[:100]}{'...' if len(sent) > 100 else ''} ===")
             atom = self.get_sentence_af(sent)
             atoms.append((sent, atom))
+            print(f"=== Extracted {len(atom) if atom else 0} atomic facts from sentence {i} ===")
 
+        print(f"=== AtomicFactGenerator: Completed processing {len(sentences)} sentences ===")
         return atoms
 
     def load_demons(self):

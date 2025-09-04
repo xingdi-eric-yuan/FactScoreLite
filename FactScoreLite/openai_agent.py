@@ -31,6 +31,9 @@ def retry_on_exception(
     Returns:
         The result of the function call
     """
+    print(f"=== Setting up retry mechanism for function: {func.__name__ if hasattr(func, '__name__') else str(func)} ===")
+    print(f"=== Retry config: max_attempts={max_attempts}, max_wait={max_wait}, multiplier={multiplier} ===")
+    
     retry_function = retry(
         retry=(
             retry_if_not_exception_type(KeyboardInterrupt)
@@ -38,8 +41,20 @@ def retry_on_exception(
         ),
         wait=wait_random_exponential(multiplier=multiplier, max=max_wait),
         stop=stop_after_attempt(max_attempts),
+        before_sleep=lambda retry_state: print(f"=== Retrying after attempt {retry_state.attempt_number}: {retry_state.outcome.exception()} ===")
     )
-    return retry_function(func)
+    
+    def wrapper(*args, **kwargs):
+        print(f"=== About to execute function with retry wrapper ===")
+        try:
+            result = retry_function(func)(*args, **kwargs)
+            print(f"=== Function executed successfully with retry wrapper ===")
+            return result
+        except Exception as e:
+            print(f"=== Function failed even with retries: {e} ===")
+            raise
+    
+    return wrapper
 
 
 # define a retry decorator
@@ -97,17 +112,17 @@ def retry_with_exponential_backoff(
 class OpenAIAgent:
 
     def __init__(self):
-        print("=== OpenAIAgent.__init__ called ===")
         if configs.model_name.startswith("trapi-"):
             scope = "api://trapi/.default"
             credential = get_bearer_token_provider(
                 ChainedTokenCredential(
-                    DefaultAzureCredential(),
+                    # DefaultAzureCredential(),
                     ManagedIdentityCredential(),
-                    AzureCliCredential(),
+                    # AzureCliCredential(),
                 ),
                 scope,
             )
+            
             if "gpt-4o" in configs.model_name.lower():    
                 _model_name = 'gpt-4o'  # Ensure this is a valid model name
                 model_version = '2024-11-20'  # Ensure this is a valid model version
@@ -119,19 +134,14 @@ class OpenAIAgent:
             deployment_name = re.sub(r'[^a-zA-Z0-9-_]', '', f'{_model_name}_{model_version}')  # If your Endpoint doesn't have harmonized deployment names, you can use the deployment name directly: see: https://aka.ms/trapi/models
             endpoint = f'https://trapi.research.microsoft.com/{instance}'
 
-            print(f"FactScoreLite TRAPI Config:")
-            print(f"  Model: {_model_name}")
-            print(f"  Version: {model_version}")
-            print(f"  Instance: {instance}")
-            print(f"  Deployment: {deployment_name}")
-            print(f"  Endpoint: {endpoint}")
-            print(f"  API Version: {api_version}")
+            print(f"FactScoreLite TRAPI Config - Model: {_model_name}, Instance: {instance}, Deployment: {deployment_name}")
 
             self.client = AzureOpenAI(
                 azure_endpoint=endpoint,
                 azure_ad_token_provider=credential,
                 api_version=api_version,
             )
+            
             self.model_name = deployment_name  # Use the deployment name as the model name
             self.max_tokens = configs.max_tokens
             self.temp = configs.temp
@@ -143,7 +153,6 @@ class OpenAIAgent:
             self.model_name = configs.model_name
 
     def generate(self, prompt):
-
         try:
             response = retry_on_exception(
                 self.client.chat.completions.create, self.need_to_be_retried
@@ -184,17 +193,17 @@ class OpenAIAgent:
         # Ignore error that are not rate limit errors
         if exception_full_name == "openai.APIStatusError":
             if not (
-                "'status': 429" in exception.message  # Rate Limit Exceeded
-                or "'status': 504" in exception.message  # Gateway Timeout
+                "'status': 429" in str(exception)  # Rate Limit Exceeded
+                or "'status': 504" in str(exception)  # Gateway Timeout
                 or (  # A previous prompt was too large
-                    "'status': 413" in exception.message
-                    and "A previous prompt was too large." in exception.message
+                    "'status': 413" in str(exception)
+                    and "A previous prompt was too large." in str(exception)
                 )
             ):
                 need_to_retry = False
 
         # Always retry InternalServerError (503) but with longer wait
-        if exception_full_name == "openai.InternalServerError" and "'status': 503" in exception.message:
+        if exception_full_name == "openai.InternalServerError" and "'status': 503" in str(exception):
             need_to_retry = True
 
         return need_to_retry
